@@ -142,12 +142,12 @@ library(ggplot2)
 
 ```{r}
 list.files(getwd())
-list.files("data/0-authors")
+list.files("data/3-sentiment")
 ```
 
 ```{r}
-test_path <- "data/0-authors/test.csv"
-train_path <- "data/0-authors/train.csv"
+test_path <- "data/3-sentiment/test.csv"
+train_path <- "data/3-sentiment/train.csv"
 
 stop_words <- read_file("stop_words.txt")
 # https://stackoverflow.com/questions/27195912/why-does-strsplit-return-a-list
@@ -163,7 +163,7 @@ test <-  read.csv(file = test_path, stringsAsFactors = FALSE)
 ```{r}
 # note the power functional features of R bring us! 
 tidy_text <- unnest_tokens(train, 'splitted', 'text', token="words") %>%
-             filter(!splitted %in% stop_words)
+             filter(!splitted %in% splitted_stop_words)
 
 tidy_text %>% count(splitted,sort=TRUE)
 ```
@@ -182,19 +182,58 @@ naiveBayes <- setRefClass("naiveBayes",
                           
        # here it would be wise to have some vars to store intermediate result
        # frequency dict etc. Though pay attention to bag of words! 
-       fields = list(),
+       fields = list(
+                    # Named vector with probabilities for each class
+                    class_probabilities = "numeric",
+                    
+                    # Matrix where row is a word and column is a class.
+                    # Cell represents probability of a word for a class.
+                    word_probabilities = "matrix",
+                    
+                    # Alpha parameter for laplace smothing
+                    alpha = 1
+                    ),
+       
        methods = list(
-                    # prepare your training data as X - bag of words for each of your
-                    # messages and corresponding label for the message encoded as 0 or 1 
-                    # (binary classification task)
-                    fit = function(X, y)
-                    {
-                         # TODO
+                    # function pre-processes dataset and returns a matrix.
+                    # In matrix each row is a word and column is a class.
+                    # Cell represents number of words in this class.
+                    preprocess = function(data) {
+                      words = unique(data$splitted)
+                      classes = unique(data$sentiment)
+                      
+                      matr = matrix(0,
+                                    nrow=length(words),
+                                    ncol=length(classes),
+                                    dimnames=list(words, classes)
+                                     )
+                        
+                      for (cls in classes) {
+                          class_data <- data[data$sentiment==cls, ]
+                          word_counts <- table(class_data$splitted)
+                          matr[names(word_counts), cls] <- as.numeric(word_counts)
+                      }
+                      
+                      return(matr)
+                    },
+         
+                    
+                    ## prepare your training data as X - bag of words for each of your
+                    ## messages and corresponding label for the message encoded as 0 or 1 
+                    ## (binary classification task)
+                    
+                    # X is tidy_text, dataframe where each row is a word and column sentiment is class, column splitted is a word
+                    # Method sets values to class_probabilities and word_probabilities attributes. 
+                    fit = function(X) {
+                      matr = preprocess(X) + alpha
+                      total_words_per_class <- colSums(matr)
+                      word_probabilities <<- sweep(matr, 2, total_words_per_class, FUN="/")
+                      
+                      class_probabilities <<- table(X$sentiment) / nrow(X)
                     },
                     
                     # return prediction for a single message 
-                    predict = function(message)
-                    {
+                    predict = function(message) {
                          # TODO
                     },
                     
