@@ -100,6 +100,7 @@ library(tidytext)
 library(readr)
 library(dplyr)
 library(ggplot2)
+library(tidyr) # For reshaping data (convert metrics table for easier plotting)
 ```
 
 ## Outline of the work
@@ -244,12 +245,40 @@ naiveBayes <- setRefClass("naiveBayes",
                     # try how well your model generalizes to real world data! 
                     score = function(X_test, y_test)
                     {
-                         # TODO
+                      predictions <- sapply(X_test$text, function(massage) predict(massage))
+                      classes <- unique(y_test)
+                      metrics <- data.frame()
+                      for (cls in classes) {
+                        TP <- sum(predictions == cls & y_test == cls)
+                        FP <- sum(predictions == cls & y_test != cls)
+                        FN <- sum(predictions != cls & y_test == cls)
+                        precision <- if (TP + FP > 0) TP / (TP + FP) else 0
+                        recall <- if (TP + FN > 0) TP / (TP + FN) else 0
+                        f1 <- if (precision + recall > 0) 2 * (precision * recall / (precision + recall)) else 0
+                        metrics <- rbind(metrics, data.frame(class=cls, precision=precision, recall=recall, f1=f1)) }
+                      return(metrics)
                     }
 ))
 
 model = naiveBayes()
-model$fit()
+model$fit(tidy_text)
+X_test <- test
+y_test <- test$sentiment
+metrics <- model$score(X_test, y_test)
+print(metrics)
+
+metrics_long <- metrics %>% pivot_longer(cols=c(precision, recall, f1), names_to="metric", values_to="value")
+metrics_long$metric <- factor(metrics_long$metric, levels = c("precision", "recall", "f1"))
+
+# plot with precision, recall, and f1 for each class
+ggplot(metrics_long, aes(x=class, y=value, fill=metric)) +
+  geom_bar(stat="identity", position="dodge") +
+  labs(title="CModel Performance by Class")
+
+# failure cases
+failures <- test[predictions != test$sentiment, c("text", "sentiment")]
+failures$predictions <- predictions[predictions != test$sentiment]
+head(failures, 10)
 ```
 
 ## Measure effectiveness of your classifier
