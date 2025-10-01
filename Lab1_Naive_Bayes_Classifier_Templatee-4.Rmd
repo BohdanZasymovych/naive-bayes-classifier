@@ -176,6 +176,242 @@ start processing it. R has very powerful tools to make nice plots and
 visualization. Show what are the most common words for negative and
 positive examples as a histogram, word cloud etc. Be creative!
 
+### Histograms of the most frequent words for each class
+
+For each class (negative, positive, neutral), the 10 most frequent words from the cleaned corpus (after removing stop words) are selected. The data is filtered by class, sorted by frequency, and a horizontal histogram (barplot) is constructed, where the X axis is the word, and the Y axis is the number of its occurrences in the class. This allows you to quickly see which words are most characteristic of each type of message.
+
+```{r}
+top_neg <- tidy_text %>%
+  dplyr::filter(sentiment == "negative") %>%
+  dplyr::count(splitted, sort = TRUE) %>%
+  dplyr::slice_max(n, n = 10, with_ties = FALSE) %>%
+  dplyr::arrange(n) %>%
+  dplyr::mutate(splitted = factor(splitted, levels = splitted))
+
+top_pos <- tidy_text %>%
+  dplyr::filter(sentiment == "positive") %>%
+  dplyr::count(splitted, sort = TRUE) %>%
+  dplyr::slice_max(n, n = 10, with_ties = FALSE) %>%
+  dplyr::arrange(n) %>%
+  dplyr::mutate(splitted = factor(splitted, levels = splitted))
+
+top_neu <- tidy_text %>%
+  dplyr::filter(sentiment == "neutral") %>%
+  dplyr::count(splitted, sort = TRUE) %>%
+  dplyr::slice_max(n, n = 10, with_ties = FALSE) %>%
+  dplyr::arrange(n) %>%
+  dplyr::mutate(splitted = factor(splitted, levels = splitted))
+
+plot_neg <- ggplot(top_neg, aes(x = splitted, y = n, fill = "negative")) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  labs(title = "Top-10 words — Negative", x = "word", y = "count")
+plot_neg
+
+plot_pos <- ggplot(top_pos, aes(x = splitted, y = n, fill = "positive")) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  labs(title = "Top-10 words — Positive", x = "word", y = "count")
+plot_pos
+
+plot_neu <- ggplot(top_neu, aes(x = splitted, y = n, fill = "neutral")) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  labs(title = "Top-10 words — Neutral", x = "word", y = "count")
+plot_neu
+```
+
+### Class balance
+
+A simple bar chart is constructed to show whether there is an imbalance between classes. This is important for understanding how class imbalance can affect classification results.
+
+```{r}
+class_balance <- train %>%
+  dplyr::count(sentiment)
+
+ggplot(class_balance, aes(x = sentiment, y = n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  labs(title = "Class balance", x = "word", y = "count")
+```
+
+### n-gram frequencies
+
+Three-grams (sequences of three words) are formed from the text for each class. The 15 most frequent trigrams are selected for each class.
+
+```{r}
+neg_bigram <- top_bigram %>%
+  dplyr::filter(sentiment == "negative") %>%
+  dplyr::arrange(n) %>%
+  dplyr::mutate(bigram = factor(bigram, levels = bigram))
+
+plot_neg_bigram <- ggplot(neg_bigram, aes(x = bigram, y = n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  labs(title = "Top-15 three-gram — Negative", x = "three-gram", y = "count")
+plot_neg_bigram
+
+pos_bigram <- top_bigram %>%
+  dplyr::filter(sentiment == "positive") %>%
+  dplyr::arrange(n) %>%
+  dplyr::mutate(bigram = factor(bigram, levels = bigram))
+
+plot_pos_bigram <- ggplot(pos_bigram, aes(x = bigram, y = n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  labs(title = "Top-15 three-gram — Positive", x = "three-gram", y = "count")
+plot_pos_bigram
+
+neu_bigram <- top_bigram %>%
+  dplyr::filter(sentiment == "neutral") %>%
+  dplyr::arrange(n) %>%
+  dplyr::mutate(bigram = factor(bigram, levels = bigram))
+
+plot_neu_bigram <- ggplot(neu_bigram, aes(x = bigram, y = n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  labs(title = "Top-15 three-gram — Neutral", x = "three-gram", y = "count")
+plot_neu_bigram
+```
+
+### Common and unique words
+
+For each class, the top 50 most frequent words are selected. The following are determined: words that are in the top 50 for both positive and negative ("shared pos-neg"), words that are only in positive ("unique pos"), only in negative ("unique neg"), only in neutral ("unique neu"). A bar chart is constructed that shows how many words are common and how many are unique for each class.
+
+```{r}
+freq_all <- tidy_text %>%
+  dplyr::count(sentiment, splitted, sort = TRUE)
+
+top_by_class <- freq_all %>%
+  dplyr::group_by(sentiment) %>%
+  dplyr::slice_max(n, n = 50, with_ties = FALSE) %>%
+  dplyr::ungroup()
+
+pos_words <- top_by_class %>% dplyr::filter(sentiment == "positive") %>% dplyr::pull(splitted)
+neg_words <- top_by_class %>% dplyr::filter(sentiment == "negative") %>% dplyr::pull(splitted)
+neu_words <- top_by_class %>% dplyr::filter(sentiment == "neutral") %>% dplyr::pull(splitted)
+
+shared_pos_neg <- intersect(pos_words, neg_words)
+unique_pos <- setdiff(pos_words, union(neg_words, neu_words))
+unique_neg <- setdiff(neg_words, union(pos_words, neu_words))
+unique_neu <- setdiff(neu_words, union(pos_words, neg_words))
+
+sets_df <- tibble::tibble(
+  set = c("shared pos-neg", "unique pos", "unique neg", "unique neu"),
+  size = c(length(shared_pos_neg), length(unique_pos), length(unique_neg), length(unique_neu))
+)
+
+ggplot(sets_df, aes(x = set, y = size, fill = set)) +
+  geom_col(show.legend = FALSE) +
+  labs(title = "Common and unique top-words", x = "category", y = "word count")
+```
+
+
+### Cleansing and its effect
+
+The top 15 most frequent words before cleaning (on raw tokens) and after cleaning (after removing stop words) are compared.
+```{r}
+freq_raw <- train %>%
+  dplyr::select(sentiment, text) %>%
+  tidytext::unnest_tokens(word, text) %>%
+  dplyr::count(word, sort = TRUE) %>%
+  dplyr::slice_max(n, n = 15, with_ties = FALSE) %>%
+  dplyr::mutate(word = factor(word, levels = rev(word)))
+
+freq_clean <- tidy_text %>%
+  dplyr::count(splitted, sort = TRUE) %>%
+  dplyr::slice_max(n, n = 15, with_ties = FALSE) %>%
+  dplyr::mutate(splitted = factor(splitted, levels = rev(splitted)))
+
+p_raw <- ggplot(freq_raw, aes(x = word, y = n)) +
+  geom_col(fill = "gray50") +
+  coord_flip() +
+  labs(title = "Before cleaning (top-15)", x = "word", y = "count")
+p_raw
+
+p_clean <- ggplot(freq_clean, aes(x = splitted, y = n)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(title = "After cleaning (top-15)", x = "word", y = "count")
+p_clean
+```
+
+## Classifier implementation
+
+```{r}
+naiveBayes <- setRefClass("naiveBayes",
+                          
+       # here it would be wise to have some vars to store intermediate result
+       # frequency dict etc. Though pay attention to bag of words! 
+       fields = list(
+                    # Named vector with probabilities for each class
+                    class_probabilities = "numeric",
+                    
+                    # Matrix where row is a word and column is a class.
+                    # Cell represents probability of a word for a class.
+                    word_probabilities = "matrix",
+                    
+                    # Alpha parameter for laplace smothing
+                    alpha = "numeric"
+                    ),
+       
+       methods = list(
+                    # function pre-processes dataset and returns a matrix.
+                    # In matrix each row is a word and column is a class.
+                    # Cell represents number of words in this class.
+                    preprocess = function(data) {
+                      words = unique(data$splitted)
+                      classes = unique(data$sentiment)
+                      
+                      matr = matrix(0,
+                                    nrow=length(words),
+                                    ncol=length(classes),
+                                    dimnames=list(words, classes)
+                                     )
+                        
+                      for (cls in classes) {
+                          class_data <- data[data$sentiment==cls, ]
+                          word_counts <- table(class_data$splitted)
+                          matr[names(word_counts), cls] <- as.numeric(word_counts)
+                      }
+                      
+                      return(matr)
+                    },
+         
+                    
+                    ## prepare your training data as X - bag of words for each of your
+                    ## messages and corresponding label for the message encoded as 0 or 1 
+                    ## (binary classification task)
+                    
+                    # X is tidy_text, dataframe where each row is a word and column sentiment is class, column splitted is a word
+                    # Method sets values to class_probabilities and word_probabilities attributes. 
+                    fit = function(X) {
+                      matr = preprocess(X) + alpha
+                      total_words_per_class <- colSums(matr)
+                      word_probabilities <<- sweep(matr, 2, total_words_per_class, FUN="/")
+                      
+                      class_probabilities <<- table(X$sentiment) / nrow(X)
+                    },
+                    
+                    # return prediction for a single message 
+                    predict = function(message) {
+                         # TODO
+                    },
+                    
+                    # score you test set so to get the understanding how well you model
+                    # works.
+                    # look at f1 score or precision and recall
+                    # visualize them 
+                    # try how well your model generalizes to real world data! 
+                    score = function(X_test, y_test)
+                    {
+                         # TODO
+                    }
+))
+
+model = naiveBayes()
+model$fit(tidy_text)
+```
+
 ## Classifier implementation
 
 ```{r}
