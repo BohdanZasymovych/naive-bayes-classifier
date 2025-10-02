@@ -167,6 +167,9 @@ tidy_text <- unnest_tokens(train, 'splitted', 'text', token="words") %>%
              filter(!splitted %in% splitted_stop_words)
 
 tidy_text %>% count(splitted,sort=TRUE)
+
+tidy_text_test <- unnest_tokens(test, 'splitted', 'text', token="words") %>%
+             filter(!splitted %in% splitted_stop_words)
 ```
 
 ## Data visualization
@@ -427,17 +430,26 @@ naiveBayes <- setRefClass("naiveBayes",
                     # Cell represents probability of a word for a class.
                     word_probabilities = "matrix",
                     
-                    # Alpha parameter for laplace smothing
-                    alpha = 1
+                    # Alpha parameter for laplace smoothing
+                    alpha = "numeric"
                     ),
        
        methods = list(
+                    initialize = function(alpha_val=1, ...) { # Initialize default value for alpha
+                      alpha <<- alpha_val
+                      callSuper(...)
+                    },
+                    
+                    
                     # function pre-processes dataset and returns a matrix.
                     # In matrix each row is a word and column is a class.
                     # Cell represents number of words in this class.
-                    preprocess = function(data) {
+      preprocess = function(data) {
                       words = unique(data$splitted)
-                      classes = unique(data$sentiment)
+                      #classes = unique(data$sentiment)
+                      classes = c("negative", "neutral", "positive")
+                      #print(words)
+                      #print(classes)
                       
                       matr = matrix(0,
                                     nrow=length(words),
@@ -453,34 +465,47 @@ naiveBayes <- setRefClass("naiveBayes",
                       
                       return(matr)
                     },
-         
                     
-                    ## prepare your training data as X - bag of words for each of your
-                    ## messages and corresponding label for the message encoded as 0 or 1 
-                    ## (binary classification task)
                     
-                    # X is tidy_text, dataframe where each row is a word and column sentiment is class, column splitted is a word
                     # Method sets values to class_probabilities and word_probabilities attributes. 
-                    fit = function(X) {
-                      matr = preprocess(X) + alpha
+                    # X is tidy_text, dataframe where each row is a word and column sentiment is class, column splitted is a word
+    fit = function(X) {
+                      matr = preprocess(X) + alpha # Apply Laplace smoothing
                       total_words_per_class <- colSums(matr)
                       word_probabilities <<- sweep(matr, 2, total_words_per_class, FUN="/")
                       
-                      class_probabilities <<- table(X$sentiment) / nrow(X)
+                      class_count <- table(X$sentiment)
+                      class_probabilities <<- as.numeric(class_count) / nrow(X)
+                      names(class_probabilities) <<- names(class_count)
                     },
                     
-                    # return prediction for a single message 
-                    predict = function(message) {
-                         # TODO
+                    
+                    # Returns prediction for a single message.
+                    # For sentiment dataset prediction is "negative", "neutral" or "positive"
+    predict = function(message) {
+                      message_df <- data.frame(id=1, text=message, stringsAsFactors=FALSE)
+                      message_words <- message_df %>% unnest_tokens(word, text, token="words") %>%
+                                          filter(!word %in% splitted_stop_words)
+                      message_words = message_words$word[message_words$word %in% rownames(word_probabilities)] # Make vector with words and drop unseen during training words
+                      if (length(message_words) == 0) {
+                        return ("neutral")
+                      }
+                      message_probability_by_class = apply(word_probabilities[message_words, ,drop=FALSE], 2, prod)
+                      total_message_probability = sum(message_probability_by_class*class_probabilities)
+                      prediction_by_class = (message_probability_by_class/total_message_probability)*class_probabilities
+                      prediction = names(prediction_by_class)[which.max(prediction_by_class)]
+                      
+                      return (prediction)
                     },
+                    
                     
                     # score you test set so to get the understanding how well you model
                     # works.
                     # look at f1 score or precision and recall
                     # visualize them 
                     # try how well your model generalizes to real world data! 
-                    score = function(X_test, y_test)
-                    {
+
+    score = function(X_test, y_test) {
                       predictions <- sapply(X_test$text, function(massage) predict(massage))
                       classes <- unique(y_test)
                       metrics <- data.frame()
@@ -493,8 +518,9 @@ naiveBayes <- setRefClass("naiveBayes",
                         f1 <- if (precision + recall > 0) 2 * (precision * recall / (precision + recall)) else 0
                         metrics <- rbind(metrics, data.frame(class=cls, precision=precision, recall=recall, f1=f1)) }
                       return(metrics)
-                    }
-))
+                      }
+       )
+)
 
 model = naiveBayes()
 model$fit(tidy_text)
