@@ -685,13 +685,12 @@ below.
   
 ### Classification Method
 
-The solution is based on **Bayes’ theorem**, which allows computing the probability of a class given an observation. For text classification, the probability of a message belonging to a class is estimated as the **product of the probabilities of its words belonging to that class**. To handle words that are absent in a class, **Laplace smoothing** is applied during the `fit` step: 1 is added to each word count. This prevents a single unseen word from incorrectly assigning zero probability to a class. During the `predict` step, unknown words are simply ignored, as there is no information about them in the training data. Logarithms are applied to prevent numerical errors that can occur when multiplying many very small probabilities. Since the product of numerous values close to zero can exceed the precision limits of a computer, taking the logarithm of probabilities allows summing them instead, which is more stable and avoids underflow issues. (But for our dataset they are not neccessary and do not chaneg anything)
+The solution is based on **Bayes’ theorem**, which allows computing the probability of a class given an observation. For text classification, the probability of a message belonging to a class is estimated as the **product of the probabilities of its words belonging to that class**. To handle words that are absent in a class, **Laplace smoothing** is applied during the `fit` step: 1 is added to each word count. This prevents a single unseen word from incorrectly assigning zero probability to a class. During the `predict` step, unknown words are simply ignored, as there is no information about them in the training data. Logarithms are applied to prevent numerical errors that can occur when multiplying many very small probabilities. Since the product of numerous values close to zero can exceed the precision limits of a computer, taking the logarithm of probabilities allows summing them instead, which is more stable and avoids underflow issues. (But for our dataset it is not neccessary and doesn't change anything)
 
 **Pros:**
 - Simple and computationally efficient.
 - Performs well on high-dimensional data such as text.
 - Requires relatively small amounts of training data.
-- Provides probabilistic outputs that are easy to interpret.
 
 **Limitations:**
 - Does not capture word order or context in sentences.
@@ -701,3 +700,7 @@ The solution is based on **Bayes’ theorem**, which allows computing the probab
 ### Why accuracy is insufficient and F1 score is preferable:
 
 Accuracy can be misleading, especially with imbalanced datasets (where one class dominates). For example, in a sentiment analysis task where 90% of messages are neutral and only 10% are positive or negative, a classifier could achieve 90% accuracy by always predicting "neutral," while completely failing to identify positive or negative messages. The F1 score provides a better measure by balancing precision (how many selected items are relevant) and recall (how many relevant items are selected), making it more robust for evaluating classification performance across all classes.
+
+
+### Sets imbalance
+I checked the number of messages in each class for both the training and test sets and saw that the distributions were very different. Some classes had many more examples than others, which caused the model to misclassify minority classes. To fix this, I created a balanced split that preserved the class proportions in train and test. After doing this, the model’s predictions became more accurate, and metrics like F1, precision, and recall improved across all classes.
