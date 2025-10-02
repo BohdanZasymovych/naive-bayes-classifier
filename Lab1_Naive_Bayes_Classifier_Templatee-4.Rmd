@@ -698,3 +698,6 @@ The solution is based on **Bayes’ theorem**, which allows computing the probab
 - Sensitive to class imbalance in the training data.
 - Assumes conditional independence of words, which is rarely true in practice since the occurrence of one word often affects the probability of others.
 
+### Why accuracy is insufficient and F1 score is preferable:
+
+Accuracy can be misleading, especially with imbalanced datasets (where one class dominates). For example, in a sentiment analysis task where 90% of messages are neutral and only 10% are positive or negative, a classifier could achieve 90% accuracy by always predicting "neutral," while completely failing to identify positive or negative messages. The F1 score provides a better measure by balancing precision (how many selected items are relevant) and recall (how many relevant items are selected), making it more robust for evaluating classification performance across all classes.
