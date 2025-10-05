@@ -16,10 +16,10 @@ knitr::opts_chunk$set(echo = TRUE)
 
 -   *Zasymovych Bohdan*:
     preprocessing, fit, predict
--   *Name2 Surname2*:
-    data visualization
--   *Name3 Surname3*:
-    metrics calculation and visualization
+-   *Hombosh Oleh*:
+    dataset visualization
+-   *Lyzenko Diana*:
+    metrics calculation and their visualization
 
 ## Introduction
 
@@ -296,14 +296,9 @@ For each class, the top 50 most frequent words are selected. The following are d
 freq_all <- tidy_text %>%
   dplyr::count(sentiment, splitted, sort = TRUE)
 
-top_by_class <- freq_all %>%
-  dplyr::group_by(sentiment) %>%
-  dplyr::slice_max(n, n = 50, with_ties = FALSE) %>%
-  dplyr::ungroup()
-
-pos_words <- top_by_class %>% dplyr::filter(sentiment == "positive") %>% dplyr::pull(splitted)
-neg_words <- top_by_class %>% dplyr::filter(sentiment == "negative") %>% dplyr::pull(splitted)
-neu_words <- top_by_class %>% dplyr::filter(sentiment == "neutral") %>% dplyr::pull(splitted)
+pos_words <- freq_all %>% dplyr::filter(sentiment == "positive") %>% dplyr::pull(splitted)
+neg_words <- freq_all %>% dplyr::filter(sentiment == "negative") %>% dplyr::pull(splitted)
+neu_words <- freq_all %>% dplyr::filter(sentiment == "neutral") %>% dplyr::pull(splitted)
 
 shared_pos_neg <- intersect(pos_words, neg_words)
 unique_pos <- setdiff(pos_words, union(neg_words, neu_words))
@@ -365,7 +360,7 @@ naiveBayes <- setRefClass("naiveBayes",
                     # Cell represents probability of a word for a class.
                     word_probabilities = "matrix",
                     
-                    # Alpha parameter for laplace smoothing
+                    # Alpha parameter for Laplace smoothing
                     alpha = "numeric"
                     ),
        
@@ -414,22 +409,6 @@ naiveBayes <- setRefClass("naiveBayes",
                     
                     # Returns prediction for a single message.
                     # For sentiment dataset prediction is "negative", "neutral" or "positive"
-                    # predict = function(message) {
-                    #   message_df <- data.frame(id=1, text=message, stringsAsFactors=FALSE)
-                    #   message_words <- message_df %>% unnest_tokens(word, text, token="words") %>%
-                    #                       filter(!word %in% splitted_stop_words)
-                    #   message_words = message_words$word[message_words$word %in% rownames(word_probabilities)] # Make vector with words and drop unseen during training words
-                    #   if (length(message_words) == 0) {
-                    #     return ("neutral")
-                    #   }
-                    #   message_probability_by_class = apply(word_probabilities[message_words, ,drop=FALSE], 2, prod)
-                    #   total_message_probability = sum(message_probability_by_class*class_probabilities)
-                    #   prediction_by_class = (message_probability_by_class/total_message_probability)*class_probabilities
-                    #   prediction = names(prediction_by_class)[which.max(prediction_by_class)]
-                    # 
-                    #   return (prediction)
-                    # },
-                    
                     predict = function(message) {
                       message_df <- data.frame(id=1, text=message, stringsAsFactors=FALSE)
                       message_words <- message_df %>%
@@ -448,11 +427,6 @@ naiveBayes <- setRefClass("naiveBayes",
                       return(prediction)
                     },
 
-                    # score you test set so to get the understanding how well you model
-                    # works.
-                    # look at f1 score or precision and recall
-                    # visualize them 
-                    # try how well your model generalizes to real world data! 
                     score = function(X_test, y_test) {
                       predictions <- sapply(X_test$text, function(massage) predict(massage))
                       classes <- unique(y_test)
@@ -511,29 +485,42 @@ naiveBayes <- setRefClass("naiveBayes",
 -   Show failure cases.
 
 ```{r}
-model = naiveBayes()
+model <- naiveBayes()
 model$fit(tidy_text)
 X_test <- test
 y_test <- test$sentiment
 metrics <- model$score(X_test, y_test)
 print(metrics)
 
-metrics_long <- metrics %>% pivot_longer(cols=c(precision, recall, f1), names_to="metric", values_to="value")
+predictions <- sapply(X_test$text, function(msg) model$predict(msg))
+
+metrics_long <- metrics %>% pivot_longer(cols=c(precision, recall, f1),
+                                         names_to="metric", values_to="value")
 metrics_long$metric <- factor(metrics_long$metric, levels = c("precision", "recall", "f1"))
 
-# Plot precision, recall, and f1 for each class
+# Plot precision, recall, and f1 per class
 ggplot(metrics_long, aes(x=class, y=value, fill=metric)) +
   geom_bar(stat="identity", position="dodge") +
   labs(title="CModel Performance by Class")
 
-predictions <- sapply(test$text, function(msg) model$predict(msg))
-failures <- test[predictions != test$sentiment, c("text", "sentiment")]
-failures$predictions <- predictions[predictions != test$sentiment]
+# Predictions
+predictions <- sapply(X_test$text, function(msg) model$predict(msg))
 
-# Build confusion matrix
+# Failure cases
+failures <- data.frame(
+  predicted = predictions[predictions != y_test],
+  real      = y_test[predictions != y_test],
+  message   = X_test$text[predictions != y_test],
+  stringsAsFactors = FALSE
+)
+# 10 wrong predictions
+head(failures, 10)
+
+# Confusion matrix
 conf_matrix <- table(True = y_test, Predicted = predictions)
 conf_df <- as.data.frame(conf_matrix)
 colnames(conf_df) <- c("True", "Predicted", "Count")
+
 ggplot(conf_df, aes(x = True, y = Predicted, fill = Count)) +
   geom_tile(color = "white") +
   geom_text(aes(label = Count), color = "black", size = 5) +
@@ -541,11 +528,10 @@ ggplot(conf_df, aes(x = True, y = Predicted, fill = Count)) +
   labs(title = "Confusion Matrix", x = "True Label", y = "Predicted Label") +
   theme_minimal()
 
-# Calculate weighted F1
+# Weighted F1
 class_counts <- table(y_test)
 metrics$f1_weighted <- metrics$f1 * class_counts[metrics$class]
 weighted_f1 <- sum(metrics$f1_weighted) / sum(class_counts)
-
 cat("Weighted F1 score: ", weighted_f1, "\n")
 ```
 
@@ -632,6 +618,8 @@ y_test <- test_balanced$sentiment
 metrics <- model$score(X_test, y_test)
 print(metrics)
 
+predictions <- sapply(X_test$text, function(msg) model$predict(msg))
+
 metrics_long <- metrics %>% pivot_longer(cols=c(precision, recall, f1), names_to="metric", values_to="value")
 metrics_long$metric <- factor(metrics_long$metric, levels = c("precision", "recall", "f1"))
 
@@ -640,9 +628,15 @@ ggplot(metrics_long, aes(x=class, y=value, fill=metric)) +
   geom_bar(stat="identity", position="dodge") +
   labs(title="CModel Performance by Class")
 
-predictions <- sapply(test_balanced$text, function(msg) model$predict(msg))
-failures <- test_balanced[predictions != test_balanced$sentiment, c("text", "sentiment")]
-failures$predictions <- predictions[predictions != test_balanced$sentiment]
+# Failure cases
+failures <- data.frame(
+  predicted = predictions[predictions != y_test],
+  real      = y_test[predictions != y_test],
+  message   = X_test$text[predictions != y_test],
+  stringsAsFactors = FALSE
+)
+# 10 wrong predictions
+head(failures, 10)
 
 # Build confusion matrix
 conf_matrix <- table(True = y_test, Predicted = predictions)
@@ -678,29 +672,31 @@ below.
 
 
 ### Data preprocesing
-  - Loading and cleaning – The raw CSV files are read into R, and punctuation or other unnecessary symbols are removed to reduce noise.
+  - Loading and cleaning – The raw CSV files are read into R, punctuation or other unnecessary symbols are removed to reduce noise.
   - Tokenization – Each message is split into individual words (tokens), transforming text into a structured form suitable for frequency counting.
-  - Stop-word removal – Common words that do not carry any meaning for classification are filtered out using a predefined stop-word list.
+  - Stop-word removal – Common words that do not carry any information for classification are filtered out using a predefined stop-word list.
   - Data representation – Each token is represented in a frequency matrix where rows are words and columns are classes. This matrix counts occurrences of each word in each class.
   
 ### Classification Method
-
-The solution is based on **Bayes’ theorem**, which allows computing the probability of a class given an observation. For text classification, the probability of a message belonging to a class is estimated as the **product of the probabilities of its words belonging to that class**. To handle words that are absent in a class, **Laplace smoothing** is applied during the `fit` step: 1 is added to each word count. This prevents a single unseen word from incorrectly assigning zero probability to a class. During the `predict` step, unknown words are simply ignored, as there is no information about them in the training data. Logarithms are applied to prevent numerical errors that can occur when multiplying many very small probabilities. Since the product of numerous values close to zero can exceed the precision limits of a computer, taking the logarithm of probabilities allows summing them instead, which is more stable and avoids underflow issues. (But for our dataset it is not neccessary and doesn't change anything)
+The classification model is based on **Bayes’ theorem**, which allows computing the probability of a class given an observation. For text classification, the probability of a message belonging to a class is estimated as the product of the probabilities of its words belonging to that class. To handle words that are absent in a class, **Laplace smoothing** is applied during the `fit` step: 1 is added to each word count. This prevents a single unseen word from incorrectly assigning zero probability to a class. During the `predict` step, unknown words are simply ignored, as there is no information about them in the training data. Logarithms are applied to prevent numerical errors that can occur when multiplying many very small probabilities. Since the product of numerous values close to zero can exceed the precision limits of a computer, taking the logarithm of probabilities allows summing them instead, which is more stable and avoids underflow issues. (But for our dataset it appeared unnecessary and didn't change anything)
 
 **Pros:**
 - Simple and computationally efficient.
 - Performs well on high-dimensional data such as text.
-- Requires relatively small amounts of training data.
 
 **Limitations:**
-- Does not capture word order or context in sentences.
+- Does not capture word order in sentences.
 - Sensitive to class imbalance in the training data.
-- Assumes conditional independence of words, which is rarely true in practice since the occurrence of one word often affects the probability of others.
+- Assumes conditional independence of words, which is rarely true in practice since the occurrence of one word often affects the probability of the others.
+
+### Metrics and Performnace
+To estimate performance of our model we've used **precision**, **recall**, **F1 score**. To get better insight into how does model confuses classes **confussion matrix** was created. To evaluate joint performance of a model over all classes **weighted F1 score** was used. Weighed F1 score was used instead of average to account unbalanced distribution of the classes.
+$$
+\text{F1}_{\text{weighted}} = \sum_{i=1}^{C} p_i \cdot \text{F1}_i \newline \newline p_i - \text{number of elements in a class i over the total number of elements} \newline F1_i - \text{F1 score for class i} 
+$$
 
 ### Why accuracy is insufficient and F1 score is preferable:
-
 Accuracy can be misleading, especially with imbalanced datasets (where one class dominates). For example, in a sentiment analysis task where 90% of messages are neutral and only 10% are positive or negative, a classifier could achieve 90% accuracy by always predicting "neutral," while completely failing to identify positive or negative messages. The F1 score provides a better measure by balancing precision (how many selected items are relevant) and recall (how many relevant items are selected), making it more robust for evaluating classification performance across all classes.
 
-
 ### Sets imbalance
-I checked the number of messages in each class for both the training and test sets and saw that the distributions were very different. Some classes had many more examples than others, which caused the model to misclassify minority classes. To fix this, I created a balanced split that preserved the class proportions in train and test. After doing this, the model’s predictions became more accurate, and metrics like F1, precision, and recall improved across all classes.
+We have checked the number of messages in each class for both training and test sets and saw that the distributions were very different. Some classes had many more examples than others, which caused the model to misclassify minority classes. To fix this, we created a balanced split that preserved the class proportions in train and test. After doing this, the model’s predictions became more accurate, especially weighted F1 score increased from 0.26 to 0.72.
